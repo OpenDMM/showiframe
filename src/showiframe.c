@@ -9,6 +9,8 @@
  *
  */
 
+#include <unistd.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -18,6 +20,19 @@
 #include <sys/stat.h>
 
 #include <linux/dvb/video.h>
+
+#ifdef __aarch64__
+
+struct video_frame {
+	uint64_t pts;
+	ssize_t bytes[8];
+	const uint8_t *data[8];
+	int is_phys_addr[8];
+};
+
+#define VIDEO_SET_FRAME _IOWR('o', 64, struct video_frame)
+
+#endif
 
 void c(int a)
 {
@@ -68,6 +83,7 @@ int main(int argc, char **argv)
 		c(ioctl(fd, VIDEO_SELECT_SOURCE, VIDEO_SOURCE_MEMORY));
 		c(ioctl(fd, VIDEO_PLAY));
 		c(ioctl(fd, VIDEO_CONTINUE));
+#ifndef __aarch64__
 		c(ioctl(fd, VIDEO_CLEAR_BUFFER));
 		while(pos <= (s.st_size-4) && !(seq_end_avail = (!iframe[pos] && !iframe[pos+1] && iframe[pos+2] == 1 && iframe[pos+3] == 0xB7)))
 			++pos;
@@ -80,6 +96,23 @@ int main(int argc, char **argv)
 		if (!seq_end_avail)
 			write(fd, seq_end, sizeof(seq_end));
 		write(fd, stuffing, 8192);
+#else
+		{
+			struct video_frame fr;
+			memset(&fr, 0, sizeof(fr));
+			fr.bytes[0] = sizeof(iframe);
+			fr.data[0] = iframe;
+
+			for (int i=0; i < 2; ++i) {
+				fr.pts = 90000 / 50 * i;
+				if (!seq_end_avail && i == 1) {
+					fr.bytes[1] = sizeof(seq_end);
+					fr.data[1] = seq_end;
+				}
+				c(ioctl(fd, VIDEO_SET_FRAME, &fr));
+			}
+		}
+#endif
 		usleep(150000);
 		c(ioctl(fd, VIDEO_STOP, 0));
 		c(ioctl(fd, VIDEO_SELECT_SOURCE, VIDEO_SOURCE_DEMUX));
