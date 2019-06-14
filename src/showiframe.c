@@ -83,10 +83,10 @@ int main(int argc, char **argv)
 		c(ioctl(fd, VIDEO_SELECT_SOURCE, VIDEO_SOURCE_MEMORY));
 		c(ioctl(fd, VIDEO_PLAY));
 		c(ioctl(fd, VIDEO_CONTINUE));
-#ifndef __aarch64__
-		c(ioctl(fd, VIDEO_CLEAR_BUFFER));
 		while(pos <= (s.st_size-4) && !(seq_end_avail = (!iframe[pos] && !iframe[pos+1] && iframe[pos+2] == 1 && iframe[pos+3] == 0xB7)))
 			++pos;
+#ifndef __aarch64__
+		c(ioctl(fd, VIDEO_CLEAR_BUFFER));
 		if ((iframe[3] >> 4) != 0xE) // no pes header
 			write(fd, pes_header, sizeof(pes_header));
 		else {
@@ -99,18 +99,18 @@ int main(int argc, char **argv)
 #else
 		{
 			struct video_frame fr;
+			int pos = 0;
 			memset(&fr, 0, sizeof(fr));
-			fr.bytes[0] = sizeof(iframe);
-			fr.data[0] = iframe;
-
-			for (int i=0; i < 2; ++i) {
-				fr.pts = 90000 / 50 * i;
-				if (!seq_end_avail && i == 1) {
-					fr.bytes[1] = sizeof(seq_end);
-					fr.data[1] = seq_end;
-				}
-				c(ioctl(fd, VIDEO_SET_FRAME, &fr));
+			fr.bytes[pos] = sizeof(iframe);
+			fr.data[pos++] = iframe;
+			fr.pts = 0;
+			if (!seq_end_avail) {
+				fr.bytes[pos] = sizeof(seq_end);
+				fr.data[pos++] = seq_end;
 			}
+			fr.bytes[pos] = sizeof(stuffing);
+			fr.data[pos++] = stuffing;
+			c(ioctl(fd, VIDEO_SET_FRAME, &fr));
 		}
 #endif
 		usleep(150000);
